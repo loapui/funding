@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import KFold
 from featureEngineer import get_all_feature
 from modelSelection.cascaded import cascadedClassifier
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     nFold = 2
     f1_list = []
     for ik in range(K):
-        skf = StratifiedKFold(n_splits=nFold, shuffle=True, random_state=ik)
+        skf = KFold(n_splits=nFold, shuffle=True, random_state=ik)
         iF = -1
         for train_index, val_index in skf.split(np.array(train_feature), np.array(y)):
             iF += 1
