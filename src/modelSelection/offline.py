@@ -67,12 +67,15 @@ if __name__ == "__main__":
     
     train_feature = get_all_feature('train')
     # fill na
-    train_feature = train_feature.fillna(0)
+    # train_feature = train_feature.fillna(0)
+    
+    
     
     y = train_feature['money']
     
     K = 3
     nFold = 2
+    f0_list = []
     f1_list = []
     for ik in range(K):
         skf = KFold(n_splits=nFold, shuffle=True, random_state=ik)
@@ -81,18 +84,30 @@ if __name__ == "__main__":
             iF += 1
             trainX = train_feature.iloc[train_index, :]
             valX = train_feature.iloc[val_index, :]
+            
+            studentID_pred = cascadedClassifier(trainX, trainX)
+            studentID_truth = trainX[['id', 'money']]
+            f0 = _compute_macro_F1(studentID_pred, studentID_truth)
+            with open(_OFFLINE_RESULT, 'a+') as f:
+                print >> f, "train: fold %d: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
+                            %(ik * nFold + iF + 1, f0[0], f0[1], f0[2], f0[3], f0[4], f0[5])
+            f0_list.append(f0)
+            
             studentID_pred = cascadedClassifier(trainX, valX)
             studentID_truth = valX[['id', 'money']]
             f1 = _compute_macro_F1(studentID_pred, studentID_truth)
             with open(_OFFLINE_RESULT, 'a+') as f:
-                print >> f, "fold %d: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
+                print >> f, "valid: fold %d: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
                             %(ik * nFold + iF + 1, f1[0], f1[1], f1[2], f1[3], f1[4], f1[5])
             f1_list.append(f1)
             
     end = time.clock()
+    f0_list = np.array(f0_list).mean(axis = 0).tolist()
     f1_list = np.array(f1_list).mean(axis = 0).tolist()
     with open(_OFFLINE_RESULT, 'a+') as f:
-        print >> f, "fold %s: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
+        print >> f, "train: fold %s: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
+                    %("mean", f0_list[0], f0_list[1], f0_list[2], f0_list[3], f0_list[4], f0_list[5])
+        print >> f, "valid: fold %s: (label0, %f), (label123, %f), (label1, %f), (label2, %f), (label3, %f), (macroF1, %f)"\
                     %("mean", f1_list[0], f1_list[1], f1_list[2], f1_list[3], f1_list[4], f1_list[5])
         print >> f, "run time: ", end - start
         print >> f, datetime.now()

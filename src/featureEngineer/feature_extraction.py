@@ -9,11 +9,70 @@ from os.path import join
 from collections import Counter
 
 import pandas as pd
+import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.preprocessing import Imputer
 
 from featureEngineer.base import train_path, test_path, feature_path, get_date_info
 from features import feature_selection
 from featureEngineer.features import get_all_continus_feature
+
+def _get_direction(door):
+    if door.find('出') != -1:
+        return 1
+    elif door.find('进') != -1:
+        return 0
+    else:
+        return np.nan
+    
+
+def extract_library_feature(flag):
+    library_file = {'train' : join(train_path, 'library_train.txt'),
+             'test' : join(test_path, 'library_test.txt')}
+    library_records = pd.read_csv(library_file[flag], sep=',', header=None)
+    library_records = library_records.drop_duplicates()
+    
+    library_records.columns = ['id', 'door', 'time']
+    library_records['date'] = library_records['time'].apply(lambda t: get_date_info(t)[0])
+    library_records['hour'] = library_records['time'].apply(lambda t: get_date_info(t)[3])
+    library_records['weekday'] = library_records['time'].apply(lambda t: get_date_info(t)[-1])
+    library_records['direction'] = library_records['door'].apply(_get_direction)
+    
+    # library feature
+    library_feature = pd.DataFrame(library_records.groupby(['id'])['date'].count())
+    library_feature.columns = ['nDate']
+    library_records = library_records[library_records.direction.notnull()]
+    print '  -> leave'
+    library_feature['nLeave'] = library_records[library_records.direction==1].groupby(['id'])['date'].count()
+    id_date_groups = pd.DataFrame(library_records[library_records.direction==1].groupby(['id', 'date'])['hour'].max())
+    library_feature['sum_leave_hour'] = id_date_groups.reset_index().groupby(['id'])['hour'].sum()
+    library_feature['avg_leave_hour'] = library_feature['sum_leave_hour'] / library_feature['nLeave']
+    print '  -> enter'
+    library_feature['nEnter'] = library_records[library_records.direction==0].groupby(['id'])['date'].count()
+    id_date_groups = pd.DataFrame(library_records[library_records.direction==0].groupby(['id', 'date'])['hour'].max())
+    library_feature['sum_enter_hour'] = id_date_groups.reset_index().groupby(['id'])['hour'].sum()
+    library_feature['avg_enter_hour'] = library_feature['sum_enter_hour'] / library_feature['nEnter']
+    print '  -> weekend leave'
+    library_feature['weekend_nLeave'] = library_records[(library_records.weekday > 4) & (library_records.direction==1)].groupby(['id'])['date'].count()
+    id_date_groups = pd.DataFrame(library_records[(library_records.weekday > 4) & (library_records.direction==1)].groupby(['id', 'date'])['hour'].max())
+    library_feature['weekend_sum_leave_hour'] = id_date_groups.reset_index().groupby(['id'])['hour'].sum()
+    library_feature['weekend_avg_leave_hour'] = library_feature['weekend_sum_leave_hour'] / library_feature['weekend_nLeave']
+    print '  -> weekend enter'
+    library_feature['weekend_nEnter'] = library_records[(library_records.weekday > 4) & (library_records.direction==0)].groupby(['id'])['date'].count()
+    id_date_groups = pd.DataFrame(library_records[(library_records.weekday > 4) & (library_records.direction==0)].groupby(['id', 'date'])['hour'].max())
+    library_feature['weekend_sum_enter_hour'] = id_date_groups.reset_index().groupby(['id'])['hour'].sum()
+    library_feature['weekend_avg_enter_hour'] = library_feature['weekend_sum_enter_hour'] / library_feature['weekend_nEnter']
+    
+    library_feature = library_feature.reset_index()
+    library_feature = library_feature[['id', 'avg_leave_hour', 'nLeave', 'avg_enter_hour', 'nEnter', \
+                                       'weekend_avg_leave_hour', 'weekend_nLeave', 'weekend_avg_enter_hour', 'weekend_nEnter', \
+                                       'nDate']]
+    library_feature.columns = ['id', "avg_leave_time_library", "nLeave_library", "avg_enter_time_library", "nEnter_library",\
+                        "avg_leave_time_weekend_library", "nLeave_weekend_library", "avg_enter_time_weekend_library", "nEnter_weekend_library",\
+                        "n_record_library"]
+    
+    library_feature.to_csv(join(feature_path, 'library_features_'+ flag +'.csv'), index=False)
+
 
 def extract_zero_feature():
     all_feature = get_all_continus_feature()
@@ -100,12 +159,25 @@ def _rank(feature):
 
 
 def transform_ranking_feature():
-    all_feature = get_all_continus_feature()
-    #fill na
-    all_feature = all_feature.fillna(0)
+    all_feature_train = get_all_continus_feature('train')
+    all_feature_test = get_all_continus_feature('test')
+    columns = all_feature_train.columns
+    
+    # fill na
+    imp = Imputer(missing_values='NaN', strategy='most_frequent', axis=0)
+    imp.fit(all_feature_train)
+    
+    all_feature_train = pd.DataFrame(imp.transform(all_feature_train))
+    all_feature_train.columns = columns
+    
+    all_feature_test = pd.DataFrame(imp.transform(all_feature_test))
+    all_feature_test.columns = columns
+    
+    all_feature = pd.concat([all_feature_train, all_feature_test])
     
     all_ranking_feature = all_feature[['id']]
     for _feat in all_feature.columns:
+        print '  process ', _feat
         if _feat == 'id':
             continue
         rank_feat = _rank(all_feature[_feat])

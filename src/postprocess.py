@@ -41,7 +41,8 @@ def fix_result_via_rule():
     id_set1 = studentID_feature[studentID_feature['max_食堂_pos']>90]['id'].values
     id_set2 = studentID_feature[studentID_feature['avg_食堂_pos']>10]['id'].values
     id_set3 = studentID_feature[studentID_feature['id']>22100]['id'].values
-    id_set = set(list(id_set1) + list(id_set2) + list(id_set3))
+    id_set4 = studentID_feature[studentID_feature['nZero']>65]['id'].values
+    id_set = set(list(id_set1) + list(id_set2) + list(id_set3) + list(id_set4))
     
     studentID_label['fix_subsidy'] = studentID_label.apply(rule, id_set = id_set, axis = 1)
     studentID_label['fix_count'] = studentID_label.apply(_analyse_fix_count, axis = 1)
